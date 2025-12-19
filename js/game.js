@@ -1,6 +1,5 @@
 /**
- * Game Module - Single Responsibility: Orchestrate game state and logic
- * Coordinates between all other modules but doesn't implement their details
+ * Game Module - Orchestrates all game logic with difficulty, lives, and enemies
  */
 
 class Game {
@@ -8,15 +7,20 @@ class Game {
     this.renderer = new GameRenderer(canvasId);
     
     // Game state
+    this.selectedDifficulty = null;
     this.currentLevelIndex = 0;
     this.score = 0;
+    this.lives = GAME_CONFIG.MAX_LIVES;
+    this.highScore = this.loadHighScore();
+    
     this.gameMap = null;
     this.bomber = null;
     this.bombManager = null;
+    this.enemyManager = null;
     
     this.isGameRunning = false;
-    this.isPaused = false;
-    this.gameOverReason = null;
+    this.gameOver = false;
+    this.timeRemaining = 0;
     
     // Input
     this.keys = {};
@@ -24,38 +28,97 @@ class Game {
     // Animation frame
     this.animationFrameId = null;
     
-    // Initialize game
+    // Initialize
     this.init();
   }
 
   /**
-   * Initialize game - setup first level
+   * Initialize the game (show difficulty selection)
    */
   init() {
+    this.showDifficultySelection();
+  }
+
+  /**
+   * Show difficulty selection menu
+   */
+  showDifficultySelection() {
+    const diffScreen = document.getElementById('difficulty-screen');
+    const gameScreen = document.getElementById('game-screen');
+    
+    if (diffScreen) diffScreen.classList.remove('hidden');
+    if (gameScreen) gameScreen.classList.add('hidden');
+    
+    // Set up buttons
+    const easyBtn = document.getElementById('easy-btn');
+    const mediumBtn = document.getElementById('medium-btn');
+    const hardBtn = document.getElementById('hard-btn');
+    
+    if (easyBtn) easyBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.EASY));
+    if (mediumBtn) mediumBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.MEDIUM));
+    if (hardBtn) hardBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.HARD));
+  }
+
+  /**
+   * Start a new game with selected difficulty
+   */
+  startGame(difficulty) {
+    this.selectedDifficulty = difficulty;
     this.currentLevelIndex = 0;
     this.score = 0;
+    this.lives = GAME_CONFIG.MAX_LIVES;
+    this.gameOver = false;
+    
+    // Filter levels by difficulty
+    const difficultyLevels = GAME_CONFIG.LEVELS.filter(l => l.difficulty === difficulty);
+    this.difficultyLevels = difficultyLevels;
+    
+    // Show game screen
+    const diffScreen = document.getElementById('difficulty-screen');
+    const gameScreen = document.getElementById('game-screen');
+    
+    if (diffScreen) diffScreen.classList.add('hidden');
+    if (gameScreen) gameScreen.classList.remove('hidden');
+    
     this.startLevel();
+    this.gameLoop();
   }
 
   /**
    * Start a new level
    */
   startLevel() {
-    const levelConfig = GAME_CONFIG.LEVELS[this.currentLevelIndex];
-    
-    if (!levelConfig) {
+    if (this.currentLevelIndex >= this.difficultyLevels.length) {
       this.endGame('You completed all levels!');
       return;
     }
 
+    const levelConfig = this.difficultyLevels[this.currentLevelIndex];
+    
     // Create game objects
     this.gameMap = new GameMap(levelConfig);
     this.bomber = new Bomber(GAME_CONFIG.BOMBER_START_X, GAME_CONFIG.BOMBER_START_Y);
     this.bombManager = new BombManager();
+    this.enemyManager = new EnemyManager();
+    
+    // Set bomb count for this level
+    this.bomber.maxBombs = levelConfig.bombCount;
+    this.bomber.activeBombs = 0;
+    
+    // Spawn enemies
+    for (let i = 0; i < levelConfig.enemyCount; i++) {
+      const spawnX = 14 - (i * 2);
+      const spawnY = 14 - (i * 2);
+      if (spawnX > 2 && spawnY > 2) {
+        this.enemyManager.addEnemy(spawnX, spawnY, this.gameMap);
+      }
+    }
+    
+    // Set time limit
+    this.timeRemaining = levelConfig.timeLimit;
+    this.levelConfig = levelConfig;
     
     this.isGameRunning = true;
-    this.gameOverReason = null;
-    
     this.updateUI();
   }
 
@@ -63,7 +126,14 @@ class Game {
    * Main game loop - update game state
    */
   update() {
-    if (!this.isGameRunning || this.isPaused) return;
+    if (!this.isGameRunning || this.gameOver) return;
+
+    // Update timer
+    this.timeRemaining -= 1 / GAME_CONFIG.FRAME_RATE;
+    if (this.timeRemaining <= 0) {
+      this.loseGame('Time\'s up!');
+      return;
+    }
 
     // Update bomber position based on input
     const moveX = (this.keys['ArrowRight'] || this.keys['d'] ? 1 : 0) - 
@@ -76,44 +146,51 @@ class Game {
 
     // Check for bomb placement
     if (this.keys[' ']) {
-      this.keys[' '] = false; // Consume key press
+      this.keys[' '] = false;
       this.placeBomb();
     }
 
-    // Update bombs (check for explosions)
+    // Update bombs
     this.bombManager.update();
 
-    // Process bomb explosions
-    this.processBombExplosions();
+    // Update enemies
+    this.enemyManager.update(this.gameMap, this.bomber, this.bombManager);
+
+    // Check collisions with explosions
+    if (Physics.isBomberInExplosion(this.bomber, this.bombManager)) {
+      this.loseGame('Caught in explosion!');
+      return;
+    }
+
+    // Check collisions with enemies
+    if (this.enemyManager.checkCollision(this.bomber)) {
+      this.loseGame('Hit by enemy!');
+      return;
+    }
 
     // Check win condition
     if (Physics.isBomberOnDiamond(this.bomber, this.gameMap)) {
       this.winLevel();
     }
 
-    // Check lose condition
-    if (Physics.isBomberInExplosion(this.bomber, this.bombManager)) {
-      this.loseGame();
-    }
+    // Process explosions and wall destruction
+    this.processBombExplosions();
   }
 
   /**
-   * Try to place a bomb at bomber position
+   * Try to place a bomb
    */
   placeBomb() {
     const { x, y } = this.bomber.getGridPosition();
     
-    // Check if can place bomb
     if (!Physics.canPlaceBombHere(x, y, this.gameMap, this.bombManager)) {
       return;
     }
 
-    // Check if bomber can place bomb
     if (!this.bomber.placeBomb()) {
       return;
     }
 
-    // Create bomb with explosion callback
     const onBombExplode = (blastTiles) => {
       this.handleBombExplosion(blastTiles);
     };
@@ -125,42 +202,49 @@ class Game {
    * Handle bomb explosion
    */
   handleBombExplosion(blastTiles) {
-    // Process explosion in physics
     const explosionResult = Physics.handleBombExplosion(
       blastTiles, 
       this.gameMap, 
       this.bomber
     );
 
-    // Notify bomber that bomb exploded
     this.bomber.bombExploded();
 
-    // Check if bomber was hit
     if (explosionResult.bomberHit) {
-      this.loseGame();
+      this.loseGame('Hit by own bomb!');
     }
 
-    // Award points for destroyed walls
+    // Points for destroyed walls
     this.score += explosionResult.destroyedWalls.length * 10;
+    
+    // Check if enemies were hit
+    for (const tile of blastTiles) {
+      for (const enemy of this.enemyManager.getEnemies()) {
+        if (enemy.isAt(tile.x, tile.y)) {
+          enemy.die();
+          this.score += 50;
+        }
+      }
+    }
+
     this.updateUI();
   }
 
   /**
-   * Process all pending bomb explosions
+   * Process bomb explosions
    */
   processBombExplosions() {
-    // Explosions are already processed by bombManager.update()
+    // Already handled by bombManager.update()
   }
 
   /**
-   * Handle win condition
+   * Handle level win
    */
   winLevel() {
     this.isGameRunning = false;
-    this.score += 100; // Bonus for completing level
+    this.score += 200; // Bonus
     this.updateUI();
     
-    // Show win modal
     this.showGameModal(
       `Level ${this.currentLevelIndex + 1} Complete!`,
       `Great job! Score: ${this.score}`,
@@ -169,24 +253,46 @@ class Game {
   }
 
   /**
-   * Handle lose condition
+   * Handle lose
    */
-  loseGame() {
+  loseGame(reason = 'Game Over!') {
     if (!this.isGameRunning) return;
     
     this.bomber.die();
     this.isGameRunning = false;
+    this.lives--;
     
-    // Show lose modal
+    if (this.lives <= 0) {
+      this.gameOverScreen();
+    } else {
+      this.showGameModal(
+        reason,
+        `Lives remaining: ${this.lives}`,
+        () => this.restartLevel()
+      );
+    }
+  }
+
+  /**
+   * Game over screen
+   */
+  gameOverScreen() {
+    this.gameOver = true;
+    
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      this.saveHighScore();
+    }
+    
     this.showGameModal(
       'Game Over!',
-      'You were caught in an explosion!',
-      () => this.restartGame()
+      `Final Score: ${this.score}\nHigh Score: ${this.highScore}`,
+      () => this.backToMenu()
     );
   }
 
   /**
-   * Move to next level
+   * Next level
    */
   nextLevel() {
     this.currentLevelIndex++;
@@ -196,7 +302,7 @@ class Game {
   /**
    * Restart current level
    */
-  restartGame() {
+  restartLevel() {
     this.startLevel();
   }
 
@@ -204,22 +310,41 @@ class Game {
    * End game (all levels completed)
    */
   endGame(message) {
+    this.gameOver = true;
     this.isGameRunning = false;
+    
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      this.saveHighScore();
+    }
+    
     this.showGameModal(
-      'Game Complete!',
+      'Victory!',
       `${message}\nFinal Score: ${this.score}`,
-      () => this.init()
+      () => this.backToMenu()
     );
   }
 
   /**
-   * Show modal dialog
+   * Back to menu
+   */
+  backToMenu() {
+    if (this.animationFrameId) {
+      cancelAnimationFrame(this.animationFrameId);
+    }
+    this.init();
+  }
+
+  /**
+   * Show modal
    */
   showGameModal(title, message, onClose) {
     const modal = document.getElementById('game-modal');
     const titleEl = document.getElementById('modal-title');
     const messageEl = document.getElementById('modal-message');
     const button = document.getElementById('modal-btn');
+
+    if (!modal) return;
 
     titleEl.textContent = title;
     messageEl.textContent = message;
@@ -236,62 +361,81 @@ class Game {
   }
 
   /**
-   * Update UI (score, level display)
+   * Update UI
    */
   updateUI() {
+    document.getElementById('lives').textContent = Math.max(0, this.lives);
     document.getElementById('level').textContent = this.currentLevelIndex + 1;
     document.getElementById('score').textContent = this.score;
+    document.getElementById('timer').textContent = Math.ceil(this.timeRemaining);
+    document.getElementById('high-score').textContent = this.highScore;
   }
 
   /**
-   * Handle keyboard input
+   * Handle keyboard
    */
   handleKeyDown(event) {
     const key = event.key;
-    
     if (key === ' ') {
-      event.preventDefault(); // Prevent page scroll
+      event.preventDefault();
     }
-    
     this.keys[key] = true;
   }
 
   /**
-   * Handle keyboard release
+   * Handle key release
    */
   handleKeyUp(event) {
     this.keys[event.key] = false;
   }
 
   /**
-   * Main render loop
+   * Render
    */
   render() {
-    this.renderer.render(this.gameMap, this.bomber, this.bombManager);
+    this.renderer.render(this.gameMap, this.bomber, this.bombManager, this.enemyManager);
+    this.updateUI();
   }
 
   /**
-   * Game loop - called every frame
+   * Game loop
    */
   gameLoop() {
     this.update();
     this.render();
-    this.animationFrameId = requestAnimationFrame(() => this.gameLoop());
+    if (this.isGameRunning && !this.gameOver) {
+      this.animationFrameId = requestAnimationFrame(() => this.gameLoop());
+    }
   }
 
   /**
-   * Start the game
+   * Start game
    */
   start() {
     this.gameLoop();
   }
 
   /**
-   * Stop the game
+   * Stop game
    */
   stop() {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
     }
+  }
+
+  /**
+   * Load high score from localStorage
+   */
+  loadHighScore() {
+    const saved = localStorage.getItem('bomberQuestHighScore');
+    return saved ? parseInt(saved) : 0;
+  }
+
+  /**
+   * Save high score to localStorage
+   */
+  saveHighScore() {
+    localStorage.setItem('bomberQuestHighScore', this.highScore.toString());
   }
 }

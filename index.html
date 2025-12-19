@@ -8,32 +8,64 @@
 </head>
 <body>
     <div class="game-container">
-        <header class="game-header">
-            <h1>💣 Bomber Quest</h1>
-            <div class="game-info">
-                <span>Level: <span id="level">1</span></span>
-                <span>Score: <span id="score">0</span></span>
+        <!-- Difficulty Selection Screen -->
+        <div id="difficulty-screen" class="difficulty-screen">
+            <header class="difficulty-header">
+                <h1>💣 Bomber Quest</h1>
+                <p>Select Difficulty</p>
+            </header>
+            <div class="difficulty-buttons">
+                <button id="easy-btn" class="btn btn-difficulty btn-easy">
+                    <span class="difficulty-title">Easy</span>
+                    <span class="difficulty-desc">5 Levels • Slow Enemies • More Time</span>
+                </button>
+                <button id="medium-btn" class="btn btn-difficulty btn-medium">
+                    <span class="difficulty-title">Medium</span>
+                    <span class="difficulty-desc">5 Levels • Fast Enemies • Less Time</span>
+                </button>
+                <button id="hard-btn" class="btn btn-difficulty btn-hard">
+                    <span class="difficulty-title">Hard</span>
+                    <span class="difficulty-desc">5 Levels • Very Fast • Minimal Time</span>
+                </button>
             </div>
-        </header>
+        </div>
 
-        <main class="game-main">
-            <canvas id="game-canvas" width="640" height="640"></canvas>
-            
-            <div class="game-controls">
-                <div class="controls-info">
-                    <p><strong>Controls:</strong></p>
-                    <p>⬅️ ➡️ ⬆️ ⬇️ = Move</p>
-                    <p>SPACE = Place Bomb</p>
+        <!-- Game Screen -->
+        <div id="game-screen" class="game-screen hidden">
+            <header class="game-header">
+                <div class="header-left">
+                    <h1>💣 Bomber Quest</h1>
                 </div>
-                <button id="restart-btn" class="btn btn-primary">Restart Game</button>
-            </div>
-        </main>
+                <div class="game-info">
+                    <span class="info-item">❤️ Lives: <span id="lives">3</span></span>
+                    <span class="info-item">📍 Level: <span id="level">1</span></span>
+                    <span class="info-item">⏱️ Time: <span id="timer">120</span>s</span>
+                    <span class="info-item">⭐ Score: <span id="score">0</span></span>
+                </div>
+                <div class="header-right">
+                    <span id="high-score-display">High Score: <span id="high-score">0</span></span>
+                </div>
+            </header>
 
-        <div id="game-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <div class="modal-content">
-                <h2 id="modal-title"></h2>
-                <p id="modal-message"></p>
-                <button id="modal-btn" class="btn btn-primary">Next Level</button>
+            <main class="game-main">
+                <canvas id="game-canvas" width="640" height="640"></canvas>
+                
+                <div class="game-controls">
+                    <div class="controls-info">
+                        <p><strong>Controls:</strong></p>
+                        <p>⬅️ ➡️ ⬆️ ⬇️ = Move</p>
+                        <p>SPACE = Place Bomb</p>
+                    </div>
+                    <button id="restart-btn" class="btn btn-primary">Back to Menu</button>
+                </div>
+            </main>
+
+            <div id="game-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+                <div class="modal-content">
+                    <h2 id="modal-title"></h2>
+                    <p id="modal-message"></p>
+                    <button id="modal-btn" class="btn btn-primary">Next</button>
+                </div>
             </div>
         </div>
     </div>
@@ -42,6 +74,7 @@
     <script src="js/map.js"></script>
     <script src="js/bomber.js"></script>
     <script src="js/bomb.js"></script>
+    <script src="js/enemy.js"></script>
     <script src="js/physics.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/game.js"></script>

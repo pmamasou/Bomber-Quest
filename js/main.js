@@ -11,18 +11,36 @@ let game = null;
 document.addEventListener('DOMContentLoaded', () => {
   try {
     game = new Game('game-canvas');
-    game.start();
+    game.init();
 
     // Wire up keyboard events
     document.addEventListener('keydown', (e) => game.handleKeyDown(e));
     document.addEventListener('keyup', (e) => game.handleKeyUp(e));
 
-    // Wire up button
+    // Wire up difficulty selection buttons
+    const difficultyButtons = {
+      'easy-btn': 'easy',
+      'medium-btn': 'medium',
+      'hard-btn': 'hard'
+    };
+
+    for (const [btnId, difficulty] of Object.entries(difficultyButtons)) {
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          if (game) {
+            game.startGame(difficulty);
+          }
+        });
+      }
+    }
+
+    // Wire up back to menu button
     const restartBtn = document.getElementById('restart-btn');
     if (restartBtn) {
       restartBtn.addEventListener('click', () => {
         if (game) {
-          game.restartGame();
+          game.backToMenu();
         }
       });
     }

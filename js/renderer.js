@@ -202,13 +202,59 @@ class GameRenderer {
   }
 
   /**
+   * Draw all enemies
+   */
+  drawEnemies(enemyManager) {
+    const enemies = enemyManager.getEnemies();
+
+    for (const enemy of enemies) {
+      if (!enemy.isAlive) continue;
+
+      const { x, y } = enemy.getPixelPosition();
+      const centerX = x + GAME_CONFIG.TILE_SIZE / 2;
+      const centerY = y + GAME_CONFIG.TILE_SIZE / 2;
+      const size = GAME_CONFIG.TILE_SIZE - 8;
+
+      // Draw enemy body (ghost-like)
+      this.ctx.fillStyle = GAME_CONFIG.COLORS.ENEMY;
+      this.ctx.beginPath();
+      this.ctx.moveTo(centerX - size / 2, centerY - size / 3);
+      this.ctx.lineTo(centerX + size / 2, centerY - size / 3);
+      this.ctx.lineTo(centerX + size / 2, centerY + size / 3);
+      // Wavy bottom
+      for (let i = 0; i < 3; i++) {
+        const waveX = centerX + size / 2 - (i + 1) * size / 3;
+        const waveY = centerY + size / 3;
+        this.ctx.lineTo(waveX, waveY - size / 6);
+      }
+      this.ctx.lineTo(centerX - size / 2, centerY + size / 3);
+      this.ctx.closePath();
+      this.ctx.fill();
+
+      // Draw eyes
+      this.ctx.fillStyle = '#fff';
+      const eyeSize = 3;
+      this.ctx.fillRect(centerX - 7, centerY - 4, eyeSize, eyeSize);
+      this.ctx.fillRect(centerX + 4, centerY - 4, eyeSize, eyeSize);
+
+      // Draw evil pupils
+      this.ctx.fillStyle = '#000';
+      this.ctx.fillRect(centerX - 6, centerY - 3, 2, 2);
+      this.ctx.fillRect(centerX + 5, centerY - 3, 2, 2);
+    }
+  }
+
+  /**
    * Render entire game state
    */
-  render(gameMap, bomber, bombManager) {
+  render(gameMap, bomber, bombManager, enemyManager) {
     this.clear();
     this.drawMap(gameMap);
     this.drawBombs(bombManager);
     this.drawExplosions(bombManager);
+    if (enemyManager) {
+      this.drawEnemies(enemyManager);
+    }
     this.drawBomber(bomber);
   }
 }
