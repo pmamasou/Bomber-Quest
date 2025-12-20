@@ -48,15 +48,6 @@ class Game {
     
     if (diffScreen) diffScreen.classList.remove('hidden');
     if (gameScreen) gameScreen.classList.add('hidden');
-    
-    // Set up buttons
-    const easyBtn = document.getElementById('easy-btn');
-    const mediumBtn = document.getElementById('medium-btn');
-    const hardBtn = document.getElementById('hard-btn');
-    
-    if (easyBtn) easyBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.EASY));
-    if (mediumBtn) mediumBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.MEDIUM));
-    if (hardBtn) hardBtn.addEventListener('click', () => this.startGame(DIFFICULTIES.HARD));
   }
 
   /**
