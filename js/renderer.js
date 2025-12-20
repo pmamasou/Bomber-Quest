@@ -1,5 +1,5 @@
 /**
- * Renderer Module - Single Responsibility: Handle all drawing/rendering (Isometric View)
+ * Renderer Module - Single Responsibility: Handle all drawing/rendering (Top-Down 2D)
  * WHY separate: Keeps visual logic independent from game logic
  */
 
@@ -13,54 +13,6 @@ class GameRenderer {
     if (!this.ctx) {
       throw new Error('Failed to get 2D context from canvas');
     }
-
-    // Isometric settings
-    this.isoTileWidth = 80;   // Width of isometric tile
-    this.isoTileHeight = 40;  // Height of isometric tile
-    this.offsetX = 320;       // Center offset X
-    this.offsetY = 100;       // Center offset Y
-  }
-
-  /**
-   * Convert grid coordinates to isometric screen coordinates
-   */
-  gridToIso(gridX, gridY) {
-    const isoX = (gridX - gridY) * (this.isoTileWidth / 2) + this.offsetX;
-    const isoY = (gridX + gridY) * (this.isoTileHeight / 2) + this.offsetY;
-    return { x: isoX, y: isoY };
-  }
-
-  /**
-   * Draw isometric tile (diamond shape)
-   */
-  drawIsoTile(x, y, color, isWall = false) {
-    const w = this.isoTileWidth / 2;
-    const h = this.isoTileHeight / 2;
-
-    this.ctx.fillStyle = color;
-    this.ctx.beginPath();
-    this.ctx.moveTo(x, y - h);           // Top
-    this.ctx.lineTo(x + w, y);           // Right
-    this.ctx.lineTo(x, y + h);           // Bottom
-    this.ctx.lineTo(x - w, y);           // Left
-    this.ctx.closePath();
-    this.ctx.fill();
-
-    // Add border for depth
-    this.ctx.strokeStyle = isWall ? '#000' : '#333';
-    this.ctx.lineWidth = 2;
-    this.ctx.stroke();
-
-    // Add subtle shading for 3D effect
-    if (isWall) {
-      this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, y - h);
-      this.ctx.lineTo(x, y + h);
-      this.ctx.lineTo(x - w, y);
-      this.ctx.closePath();
-      this.ctx.fill();
-    }
   }
 
   /**
@@ -69,68 +21,34 @@ class GameRenderer {
   clear() {
     this.ctx.fillStyle = '#1a1a2e';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    
-    // Add subtle gradient background
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    gradient.addColorStop(0, 'rgba(0, 100, 150, 0.1)');
-    gradient.addColorStop(1, 'rgba(50, 0, 100, 0.1)');
-    this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
   /**
-   * Draw grid map in isometric view
+   * Draw grid map in top-down view with enhanced graphics
    */
   drawMap(gameMap) {
     const grid = gameMap.getGrid();
     const WALL_TYPES = GAME_CONFIG.WALL_TYPES;
 
-    // Draw from back to front (depth sorting)
     for (let y = 0; y < grid.length; y++) {
       for (let x = 0; x < grid[y].length; x++) {
         const tile = grid[y][x];
-        const isoPos = this.gridToIso(x, y);
+        const pixelX = x * GAME_CONFIG.TILE_SIZE;
+        const pixelY = y * GAME_CONFIG.TILE_SIZE;
 
         switch (tile) {
           case WALL_TYPES.EMPTY:
-            this.drawIsoTile(isoPos.x, isoPos.y, '#2a5a4a', false);
+            this.ctx.fillStyle = '#2a5a4a';
+            this.ctx.fillRect(pixelX, pixelY, GAME_CONFIG.TILE_SIZE, GAME_CONFIG.TILE_SIZE);
             break;
           case WALL_TYPES.DESTRUCTIBLE:
-            this.drawIsoTile(isoPos.x, isoPos.y, '#4ECDC4', true);
-            // Add brick pattern
-            this.ctx.strokeStyle = '#2a9d8f';
-            this.ctx.lineWidth = 1;
-            this.ctx.beginPath();
-            this.ctx.moveTo(isoPos.x - 10, isoPos.y);
-            this.ctx.lineTo(isoPos.x + 10, isoPos.y);
-            this.ctx.stroke();
+            this.drawDestructibleWall(pixelX, pixelY);
             break;
           case WALL_TYPES.INDESTRUCTIBLE:
-            this.drawIsoTile(isoPos.x, isoPos.y, '#95A5A6', true);
-            // Add X pattern for stone
-            this.ctx.strokeStyle = '#5a6c6f';
-            this.ctx.lineWidth = 1.5;
-            this.ctx.beginPath();
-            this.ctx.moveTo(isoPos.x - 15, isoPos.y - 10);
-            this.ctx.lineTo(isoPos.x + 15, isoPos.y + 10);
-            this.ctx.moveTo(isoPos.x - 15, isoPos.y + 10);
-            this.ctx.lineTo(isoPos.x + 15, isoPos.y - 10);
-            this.ctx.stroke();
+            this.drawIndestructibleWall(pixelX, pixelY);
             break;
           case WALL_TYPES.DIAMOND:
-            this.drawIsoTile(isoPos.x, isoPos.y, '#2a5a4a', false);
-            // Draw glowing diamond on top
-            this.ctx.fillStyle = '#FFD700';
-            this.ctx.shadowColor = '#FFD700';
-            this.ctx.shadowBlur = 15;
-            this.ctx.beginPath();
-            this.ctx.moveTo(isoPos.x, isoPos.y - 15);
-            this.ctx.lineTo(isoPos.x + 8, isoPos.y - 5);
-            this.ctx.lineTo(isoPos.x, isoPos.y + 5);
-            this.ctx.lineTo(isoPos.x - 8, isoPos.y - 5);
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.shadowBlur = 0;
+            this.drawDiamondTile(pixelX, pixelY);
             break;
         }
       }
@@ -138,116 +56,211 @@ class GameRenderer {
   }
 
   /**
-   * Draw the bomber in isometric view
+   * Draw destructible wall with 3D effect
+   */
+  drawDestructibleWall(x, y) {
+    const size = GAME_CONFIG.TILE_SIZE;
+    
+    // Main wall
+    this.ctx.fillStyle = '#4ECDC4';
+    this.ctx.fillRect(x + 2, y + 2, size - 4, size - 4);
+    
+    // Top highlight for 3D effect
+    this.ctx.fillStyle = '#6EE5DC';
+    this.ctx.fillRect(x + 2, y + 2, size - 4, 4);
+    
+    // Bottom shadow
+    this.ctx.fillStyle = '#2a9d8f';
+    this.ctx.fillRect(x + 2, y + size - 6, size - 4, 4);
+    
+    // Brick pattern
+    this.ctx.strokeStyle = '#2a7a6f';
+    this.ctx.lineWidth = 1;
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + 2, y + size / 2);
+    this.ctx.lineTo(x + size - 2, y + size / 2);
+    this.ctx.stroke();
+  }
+
+  /**
+   * Draw indestructible wall with pattern
+   */
+  drawIndestructibleWall(x, y) {
+    const size = GAME_CONFIG.TILE_SIZE;
+    
+    // Main wall
+    this.ctx.fillStyle = '#95A5A6';
+    this.ctx.fillRect(x, y, size, size);
+    
+    // Add stone pattern
+    this.ctx.strokeStyle = '#5a6c6f';
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeRect(x + 4, y + 4, size - 8, size - 8);
+    
+    // Diagonal lines for texture
+    this.ctx.beginPath();
+    this.ctx.moveTo(x + 5, y + 5);
+    this.ctx.lineTo(x + size - 5, y + size - 5);
+    this.ctx.moveTo(x + size - 5, y + 5);
+    this.ctx.lineTo(x + 5, y + size - 5);
+    this.ctx.stroke();
+  }
+
+  /**
+   * Draw diamond tile with glow effect
+   */
+  drawDiamondTile(x, y) {
+    const size = GAME_CONFIG.TILE_SIZE;
+    const centerX = x + size / 2;
+    const centerY = y + size / 2;
+    
+    // Base floor
+    this.ctx.fillStyle = '#2a5a4a';
+    this.ctx.fillRect(x, y, size, size);
+    
+    // Glowing diamond with shadow
+    this.ctx.shadowColor = '#FFD700';
+    this.ctx.shadowBlur = 20;
+    
+    this.ctx.fillStyle = '#FFD700';
+    this.ctx.beginPath();
+    this.ctx.moveTo(centerX, centerY - 12);
+    this.ctx.lineTo(centerX + 12, centerY);
+    this.ctx.lineTo(centerX, centerY + 12);
+    this.ctx.lineTo(centerX - 12, centerY);
+    this.ctx.closePath();
+    this.ctx.fill();
+    
+    this.ctx.shadowBlur = 0;
+    
+    // Border
+    this.ctx.strokeStyle = '#FFC700';
+    this.ctx.lineWidth = 2;
+    this.ctx.stroke();
+  }
+
+  /**
+   * Draw the bomber
    */
   drawBomber(bomber) {
     if (!bomber.isAlive) {
       return;
     }
 
-    const { x, y } = bomber.getGridPosition();
-    const isoPos = this.gridToIso(x, y);
+    const { x, y } = bomber.getPixelPosition();
+    const centerX = x + GAME_CONFIG.TILE_SIZE / 2;
+    const centerY = y + GAME_CONFIG.TILE_SIZE / 2;
+    const size = GAME_CONFIG.TILE_SIZE - 8;
 
-    // Draw bomber as 3D character
-    const size = 16;
-    
     // Draw body
     this.ctx.fillStyle = '#FF6B6B';
     this.ctx.beginPath();
-    this.ctx.ellipse(isoPos.x, isoPos.y - 5, size, size + 5, 0, 0, Math.PI * 2);
+    this.ctx.ellipse(centerX, centerY - 2, size / 3, size / 2.5, 0, 0, Math.PI * 2);
     this.ctx.fill();
 
     // Draw head
     this.ctx.fillStyle = '#FF9999';
     this.ctx.beginPath();
-    this.ctx.arc(isoPos.x, isoPos.y - 20, 10, 0, Math.PI * 2);
+    this.ctx.arc(centerX, centerY - size / 2 - 3, size / 4, 0, Math.PI * 2);
     this.ctx.fill();
 
     // Draw eyes with shine
     this.ctx.fillStyle = '#fff';
     this.ctx.beginPath();
-    this.ctx.arc(isoPos.x - 4, isoPos.y - 22, 2.5, 0, Math.PI * 2);
-    this.ctx.arc(isoPos.x + 4, isoPos.y - 22, 2.5, 0, Math.PI * 2);
+    this.ctx.arc(centerX - 4, centerY - size / 2 - 5, 2, 0, Math.PI * 2);
+    this.ctx.arc(centerX + 4, centerY - size / 2 - 5, 2, 0, Math.PI * 2);
     this.ctx.fill();
 
     // Draw pupils
     this.ctx.fillStyle = '#000';
     this.ctx.beginPath();
-    this.ctx.arc(isoPos.x - 4, isoPos.y - 21, 1.5, 0, Math.PI * 2);
-    this.ctx.arc(isoPos.x + 4, isoPos.y - 21, 1.5, 0, Math.PI * 2);
+    this.ctx.arc(centerX - 4, centerY - size / 2 - 4, 1, 0, Math.PI * 2);
+    this.ctx.arc(centerX + 4, centerY - size / 2 - 4, 1, 0, Math.PI * 2);
     this.ctx.fill();
 
     // Draw mouth
     this.ctx.strokeStyle = '#000';
-    this.ctx.lineWidth = 1.5;
+    this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    this.ctx.arc(isoPos.x, isoPos.y - 17, 3, 0, Math.PI);
+    this.ctx.arc(centerX, centerY - size / 2 - 1, 2, 0, Math.PI);
     this.ctx.stroke();
   }
 
   /**
-   * Draw all bombs in isometric view
+   * Draw all bombs
    */
   drawBombs(bombManager) {
     const bombs = bombManager.getBombs();
 
     for (const bomb of bombs) {
       const { x, y } = bomb.getPosition();
-      const isoPos = this.gridToIso(x, y);
+      const pixelX = x * GAME_CONFIG.TILE_SIZE;
+      const pixelY = y * GAME_CONFIG.TILE_SIZE;
+      const centerX = pixelX + GAME_CONFIG.TILE_SIZE / 2;
+      const centerY = pixelY + GAME_CONFIG.TILE_SIZE / 2;
 
-      // Draw bomb body
+      // Draw bomb body with 3D effect
       this.ctx.fillStyle = '#FFD93D';
       this.ctx.beginPath();
-      this.ctx.ellipse(isoPos.x, isoPos.y, 10, 12, 0, 0, Math.PI * 2);
+      this.ctx.ellipse(centerX, centerY, GAME_CONFIG.TILE_SIZE / 3, GAME_CONFIG.TILE_SIZE / 2.5, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Highlight on bomb
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      this.ctx.beginPath();
+      this.ctx.ellipse(centerX - 3, centerY - 3, GAME_CONFIG.TILE_SIZE / 6, GAME_CONFIG.TILE_SIZE / 5, 0, 0, Math.PI * 2);
       this.ctx.fill();
 
       // Draw fuse
       this.ctx.strokeStyle = '#FF6B6B';
       this.ctx.lineWidth = 2;
       this.ctx.beginPath();
-      this.ctx.moveTo(isoPos.x, isoPos.y - 12);
-      this.ctx.quadraticCurveTo(isoPos.x + 2, isoPos.y - 18, isoPos.x, isoPos.y - 22);
+      this.ctx.moveTo(centerX, centerY - GAME_CONFIG.TILE_SIZE / 3);
+      this.ctx.quadraticCurveTo(centerX + 2, centerY - GAME_CONFIG.TILE_SIZE / 2.2, centerX, centerY - GAME_CONFIG.TILE_SIZE / 1.8);
       this.ctx.stroke();
 
-      // Draw spark
+      // Draw spark on fuse
       this.ctx.fillStyle = '#FF4444';
       this.ctx.beginPath();
-      this.ctx.arc(isoPos.x, isoPos.y - 22, 2, 0, Math.PI * 2);
+      this.ctx.arc(centerX, centerY - GAME_CONFIG.TILE_SIZE / 1.8, 2, 0, Math.PI * 2);
       this.ctx.fill();
     }
   }
 
   /**
-   * Draw explosions in isometric view
+   * Draw explosions
    */
   drawExplosions(bombManager) {
     const explosions = bombManager.getExplosions();
 
     for (const explosion of explosions) {
       for (const tile of explosion.tiles) {
-        const isoPos = this.gridToIso(tile.x, tile.y);
+        const pixelX = tile.x * GAME_CONFIG.TILE_SIZE;
+        const pixelY = tile.y * GAME_CONFIG.TILE_SIZE;
+        const centerX = pixelX + GAME_CONFIG.TILE_SIZE / 2;
+        const centerY = pixelY + GAME_CONFIG.TILE_SIZE / 2;
 
-        // Draw explosion flash
+        // Draw explosion blast
         this.ctx.fillStyle = 'rgba(255, 100, 0, 0.6)';
         this.ctx.beginPath();
-        this.ctx.moveTo(isoPos.x, isoPos.y - 20);
-        this.ctx.lineTo(isoPos.x + 20, isoPos.y);
-        this.ctx.lineTo(isoPos.x, isoPos.y + 20);
-        this.ctx.lineTo(isoPos.x - 20, isoPos.y);
+        this.ctx.moveTo(centerX, centerY - GAME_CONFIG.TILE_SIZE / 2);
+        this.ctx.lineTo(centerX + GAME_CONFIG.TILE_SIZE / 2, centerY);
+        this.ctx.lineTo(centerX, centerY + GAME_CONFIG.TILE_SIZE / 2);
+        this.ctx.lineTo(centerX - GAME_CONFIG.TILE_SIZE / 2, centerY);
         this.ctx.closePath();
         this.ctx.fill();
 
-        // Draw explosion particles
-        this.ctx.fillStyle = 'rgba(255, 150, 0, 0.7)';
+        // Draw particle effect
+        this.ctx.fillStyle = 'rgba(255, 150, 0, 0.8)';
         this.ctx.beginPath();
-        this.ctx.arc(isoPos.x, isoPos.y, 12, 0, Math.PI * 2);
+        this.ctx.arc(centerX, centerY, GAME_CONFIG.TILE_SIZE / 3, 0, Math.PI * 2);
         this.ctx.fill();
       }
     }
   }
 
   /**
-   * Draw all enemies in isometric view
+   * Draw all enemies
    */
   drawEnemies(enemyManager) {
     const enemies = enemyManager.getEnemies();
@@ -255,27 +268,29 @@ class GameRenderer {
     for (const enemy of enemies) {
       if (!enemy.isAlive) continue;
 
-      const { x, y } = enemy.getGridPosition();
-      const isoPos = this.gridToIso(x, y);
+      const { x, y } = enemy.getPixelPosition();
+      const centerX = x + GAME_CONFIG.TILE_SIZE / 2;
+      const centerY = y + GAME_CONFIG.TILE_SIZE / 2;
+      const size = GAME_CONFIG.TILE_SIZE - 8;
 
-      // Draw enemy as purple ghost/blob
+      // Draw enemy body (ghost-like)
       this.ctx.fillStyle = '#9B59B6';
       this.ctx.beginPath();
-      this.ctx.moveTo(isoPos.x - 15, isoPos.y - 10);
-      this.ctx.lineTo(isoPos.x + 15, isoPos.y - 10);
-      this.ctx.quadraticCurveTo(isoPos.x + 15, isoPos.y + 10, isoPos.x, isoPos.y + 15);
-      this.ctx.quadraticCurveTo(isoPos.x - 15, isoPos.y + 10, isoPos.x - 15, isoPos.y - 10);
+      this.ctx.moveTo(centerX - size / 2, centerY - size / 3);
+      this.ctx.lineTo(centerX + size / 2, centerY - size / 3);
+      this.ctx.quadraticCurveTo(centerX + size / 2, centerY + size / 3, centerX, centerY + size / 2.5);
+      this.ctx.quadraticCurveTo(centerX - size / 2, centerY + size / 3, centerX - size / 2, centerY - size / 3);
       this.ctx.closePath();
       this.ctx.fill();
 
       // Draw wavy bottom
       this.ctx.strokeStyle = '#6C3A7C';
-      this.ctx.lineWidth = 2;
+      this.ctx.lineWidth = 1.5;
       this.ctx.beginPath();
-      this.ctx.moveTo(isoPos.x - 12, isoPos.y + 12);
-      for (let i = 0; i < 4; i++) {
-        const waveX = isoPos.x - 12 + (i * 8);
-        const waveY = isoPos.y + 12 + (i % 2 ? 3 : 0);
+      this.ctx.moveTo(centerX - size / 2 + 2, centerY + size / 3);
+      for (let i = 0; i < 3; i++) {
+        const waveX = centerX - size / 2 + 2 + (i * size / 3);
+        const waveY = centerY + size / 3 + (i % 2 ? 3 : 0);
         this.ctx.lineTo(waveX, waveY);
       }
       this.ctx.stroke();
@@ -283,15 +298,15 @@ class GameRenderer {
       // Draw eyes
       this.ctx.fillStyle = '#fff';
       this.ctx.beginPath();
-      this.ctx.arc(isoPos.x - 6, isoPos.y - 2, 3, 0, Math.PI * 2);
-      this.ctx.arc(isoPos.x + 6, isoPos.y - 2, 3, 0, Math.PI * 2);
+      this.ctx.arc(centerX - 5, centerY - 3, 2.5, 0, Math.PI * 2);
+      this.ctx.arc(centerX + 5, centerY - 3, 2.5, 0, Math.PI * 2);
       this.ctx.fill();
 
       // Draw evil pupils
       this.ctx.fillStyle = '#000';
       this.ctx.beginPath();
-      this.ctx.arc(isoPos.x - 6, isoPos.y - 2, 2, 0, Math.PI * 2);
-      this.ctx.arc(isoPos.x + 6, isoPos.y - 2, 2, 0, Math.PI * 2);
+      this.ctx.arc(centerX - 5, centerY - 3, 1.5, 0, Math.PI * 2);
+      this.ctx.arc(centerX + 5, centerY - 3, 1.5, 0, Math.PI * 2);
       this.ctx.fill();
     }
   }
